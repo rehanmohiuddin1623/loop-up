@@ -451,6 +451,7 @@ export default function App() {
                       onClick={endCall}
                       className="flex items-center justify-center w-12 h-12 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600"
                     >
+                      {/*@ts-ignore */}
                       <PhoneIcon style={{ transform: 'rotate(135deg)' }} />
                     </button>
                   </>
