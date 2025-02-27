@@ -5,6 +5,7 @@ import * as Progress from '@radix-ui/react-progress';
 import * as Separator from '@radix-ui/react-separator';
 import * as Avatar from '@radix-ui/react-avatar';
 import { Cross2Icon } from '@radix-ui/react-icons';
+import { Button, Flex } from "@radix-ui/themes";
 
 const PhoneIcon = () => (
   <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -348,8 +349,8 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
-      <div className="w-full max-w-md bg-white rounded-lg shadow-md p-6">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-10">
+      <div style={{ padding: 12 }} className="w-full max-w-md bg-white rounded-lg shadow-md p-4">
         <h1 className="text-2xl font-bold mb-4 text-center">WebRTC Audio Call</h1>
 
         <Separator.Root className="h-px bg-gray-200 my-4" />
@@ -377,18 +378,20 @@ export default function App() {
 
         <Tabs.Root defaultValue="call" className="mb-6">
           <Tabs.List className="flex border-b border-gray-200">
-            <Tabs.Trigger
-              value="call"
-              className="px-4 py-2 hover:bg-gray-100 data-[state=active]:border-b-2 data-[state=active]:border-blue-500"
-            >
-              Call
-            </Tabs.Trigger>
-            <Tabs.Trigger
-              value="settings"
-              className="px-4 py-2 hover:bg-gray-100 data-[state=active]:border-b-2 data-[state=active]:border-blue-500"
-            >
-              Settings
-            </Tabs.Trigger>
+            <Flex gap={"3"} align={"center"}>
+              <Tabs.Trigger
+                value="call"
+                className="px-4 py-2 hover:bg-gray-100 data-[state=active]:border-b-2 data-[state=active]:border-blue-500"
+              >
+                Call
+              </Tabs.Trigger>
+              <Tabs.Trigger
+                value="settings"
+                className="px-4 py-2 hover:bg-gray-100 data-[state=active]:border-b-2 data-[state=active]:border-blue-500"
+              >
+                Settings
+              </Tabs.Trigger>
+            </Flex>
           </Tabs.List>
 
           <Tabs.Content value="call" className="pt-4">
@@ -439,22 +442,24 @@ export default function App() {
                     <span>Calling...</span>
                   </div>
                 ) : callStatus === 'connected' ? (
-                  <>
-                    <button
+                  <Flex gap={"3"} align={"center"}>
+                    <Button
+                      color='gray'
                       onClick={toggleMute}
                       className={`flex items-center justify-center w-12 h-12 rounded-full ${isMuted ? 'bg-red-500' : 'bg-gray-500'} text-white shadow-md hover:opacity-90`}
                     >
                       {isMuted ? <MicrophoneOffIcon /> : <MicrophoneIcon />}
-                    </button>
+                    </Button>
 
-                    <button
+                    <Button
+                      color='gray'
                       onClick={endCall}
                       className="flex items-center justify-center w-12 h-12 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600"
                     >
                       {/*@ts-ignore */}
                       <PhoneIcon style={{ transform: 'rotate(135deg)' }} />
-                    </button>
-                  </>
+                    </Button>
+                  </Flex >
                 ) : (
                   <div className="flex flex-col items-center">
                     <div className="text-red-500 mb-2">Call Failed</div>
