@@ -18,7 +18,7 @@ export default function App() {
   const audioContext = useRef<AudioContext | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
 
-  const [{ localAudioRef, localStreamRef, remoteAudioRef, callStatus, connectionStatus, isMuted }, { endCall, startAudioCall, toggleMute, initializeConnection,closeConnection }] = useConnection()
+  const [{ localAudioRef, localStreamRef, remoteAudioRef, callStatus, connectionStatus, isMuted }, { endCall, startAudioCall, toggleMute, initializeConnection }] = useConnection()
 
   const closeAudioContext = () => {
     // Close audio context
