@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { RefObject, useEffect, useMemo, useRef, useState } from 'react'
 import { peerConnectionConfig, signalingServerUrl } from '../utils/signaling-server';
+import { generateRoomId } from '../utils';
+type ROOM_STATUS = "ROOM_JOINED" | "ROOM_CREATED" | "ROOM_LEFT" | "IDLE"
 
-function useConnection() {
+
+function useConnection(_roomId: string) {
     const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
     const [callStatus, setCallStatus] = useState<'idle' | 'calling' | 'connected' | 'failed'>('idle');
     const [isMuted, setIsMuted] = useState(false);
@@ -11,7 +14,63 @@ function useConnection() {
     const peerConnection = useRef<RTCPeerConnection | null>(null);
     const ws = useRef<WebSocket | null>(null);
     const localStreamRef = useRef<MediaStream | null>(null);
+    const [roomId, setRoomId] = useState<string | null>(_roomId);
+    const roomDetails = { room: roomId }
 
+    // 
+
+    const [messages, setMessages] = useState<Record<string, any>[]>([]);
+    const [users, setUsers] = useState<string[]>([]);
+    const [status, setStatus] = useState<ROOM_STATUS>("IDLE")
+
+
+    const sendMessage = (data: Record<string, any>) => {
+        if (ws.current?.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify(data));
+        }
+    };
+
+    const handleMessage = (data: Record<string, any>) => {
+        console.log({ data })
+        switch (data.type) {
+            case "room-created":
+                setStatus("ROOM_CREATED");
+                break;
+            case "room-joined":
+                setStatus("ROOM_JOINED");
+                break;
+            case "room-left":
+                setStatus("ROOM_LEFT");
+                break;
+            case "user-joined":
+                setUsers((prev) => [...prev, data.userId]);
+                break;
+            case "user-left":
+                setUsers((prev) => prev.filter((id) => id !== data.userId));
+                break;
+            case "message":
+                setMessages((prev) => [...prev, data]);
+                break;
+            default:
+                console.warn("Unknown message type:", data);
+        }
+    };
+
+    const createRoom = (roomId: string) => {
+        sendMessage({ type: "create-room", room: roomId });
+    };
+
+    const joinRoom = (roomId: string, userId: string) => {
+        sendMessage({ type: "join-room", room: roomId, userId });
+    };
+
+    const leaveRoom = (roomId: string, userId: string) => {
+        sendMessage({ type: "leave-room", room: roomId, userId });
+    };
+
+    const sendChatMessage = (roomId: string, userId: string, message: Record<string, any>) => {
+        sendMessage({ type: "message", room: roomId, userId, message });
+    };
 
 
     // Initialize WebRTC connection
@@ -29,7 +88,7 @@ function useConnection() {
         setConnectionStatus('connecting');
 
         // Create WebSocket connection
-        ws.current = new WebSocket(signalingServerUrl);
+        ws.current = new WebSocket(signalingServerUrl + `?roomId=${_roomId}`);
 
         ws.current.onopen = () => {
             console.log("Connected to signaling server");
@@ -52,7 +111,7 @@ function useConnection() {
 
             try {
                 const data = JSON.parse(message.data);
-
+                console.log("data parsed", data.type)
                 if (data.type === 'offer') {
                     console.log('Received offer:', data);
                     await handleOffer(data.offer);
@@ -64,6 +123,12 @@ function useConnection() {
                 } else if (data.type === 'candidate' && data.candidate && data.candidate.candidate) {
                     console.log('Received candidate:', data);
                     await handleCandidate(data.candidate);
+                } else if (data.type === "room-created") {
+                    setStatus("ROOM_CREATED");
+                } else if (data.type === "room-joined") {
+                    setStatus("ROOM_JOINED");
+                } else if (data.type === "room-left") {
+                    setStatus("ROOM_LEFT");
                 }
             } catch (error) {
                 console.error("Error handling message:", error);
@@ -270,7 +335,7 @@ function useConnection() {
         initializeConnection();
     };
 
-    return [{ connectionStatus, callStatus, isMuted, localAudioRef, localStreamRef, remoteAudioRef }, { initializeConnection, closeConnection, toggleMute, endCall, handleAnswer, startAudioCall }] as const
+    return [{ status, roomId, connectionStatus, callStatus, isMuted, localAudioRef, localStreamRef, remoteAudioRef }, { initializeConnection, closeConnection, toggleMute, endCall, handleAnswer, startAudioCall, createRoom, joinRoom, leaveRoom }] as const
 }
 
 export default useConnection

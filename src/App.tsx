@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as Progress from '@radix-ui/react-progress';
@@ -6,9 +6,14 @@ import * as Separator from '@radix-ui/react-separator';
 import * as Avatar from '@radix-ui/react-avatar';
 import { Cross2Icon } from '@radix-ui/react-icons';
 import { Button, Flex } from "@radix-ui/themes";
-import { Mic, MicOff, PhoneCall, PhoneOff } from "lucide-react";
+import { Clipboard, ClipboardCopy, Mic, MicOff, PhoneCall, PhoneOff } from "lucide-react";
 import useConnection from "./hooks/useConnection";
 import { signalingServerUrl } from "./utils/signaling-server";
+import { Label } from "radix-ui";
+import { copyText, generateRoomId } from "./utils";
+import useRoom from "./hooks/useRoom";
+import { useLocation, useNavigate } from "react-router";
+import { useSearchParams } from "react-router-dom";
 
 
 
@@ -17,8 +22,12 @@ export default function App() {
   const audioAnalyser = useRef<AnalyserNode | null>(null);
   const audioContext = useRef<AudioContext | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
+  const [loading, setLoading] = useState(false)
+  const [searchParams] = useSearchParams()
+  const roomIdFromParam = searchParams.get("roomId")
+  const _roomId = roomIdFromParam || useMemo(() => generateRoomId(), [])
 
-  const [{ localAudioRef, localStreamRef, remoteAudioRef, callStatus, connectionStatus, isMuted }, { endCall, startAudioCall, toggleMute, initializeConnection }] = useConnection()
+  const [{ status, roomId, localAudioRef, localStreamRef, remoteAudioRef, callStatus, connectionStatus, isMuted }, { endCall, startAudioCall, toggleMute, initializeConnection, joinRoom, leaveRoom, createRoom, }] = useConnection(_roomId)
 
   const closeAudioContext = () => {
     // Close audio context
@@ -29,6 +38,28 @@ export default function App() {
     }
   }
 
+
+
+
+  const initiateCallAction = () => {
+    setLoading(true)
+    if (roomIdFromParam) {
+      joinRoom(roomIdFromParam, "")
+      return
+    }
+    createRoom(roomId as string)
+  }
+
+  useEffect(() => {
+    console.log({ status })
+    switch (status) {
+      case "ROOM_CREATED":
+      case "ROOM_JOINED":
+        setLoading(false)
+        startAudioCall()
+        break;
+    }
+  }, [status])
 
   // Audio level meter
   useEffect(() => {
@@ -69,6 +100,12 @@ export default function App() {
     const source = audioContext.current.createMediaStreamSource(localStreamRef.current);
     source.connect(audioAnalyser.current);
   };
+
+  const handleCopyLink = async () => {
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set("roomId", _roomId);
+    await copyText(currentUrl.toString())
+  }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-10">
@@ -111,7 +148,7 @@ export default function App() {
                 value="settings"
                 className="px-4 py-2 hover:bg-gray-100 data-[state=active]:border-b-2 data-[state=active]:border-blue-500"
               >
-                Settings
+                Info
               </Tabs.Trigger>
             </Flex>
           </Tabs.List>
@@ -149,17 +186,31 @@ export default function App() {
               </div>
 
               {/* Call controls */}
-              <div className="flex gap-4">
+              <div className="flex flex-col gap-4">
                 {callStatus === 'idle' ? (
-                  <Button
-                    color='blue'
-                    onClick={startAudioCall}
-                    disabled={connectionStatus !== 'connected'}
-                    className="flex items-center justify-center gap-2 px-6 py-3 bg-green-500 text-white rounded-full shadow-md hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                  >
-                    <PhoneCall />
-                    Start Call
-                  </Button>
+                  <>
+                    <Flex className="flex items-center gap-4" >
+                      <>
+                        <Label.Label>Room Name</Label.Label>
+                        <div className="">
+                          <div className="flex items-center rounded-md bg-white pl-3 outline-1 -outline-offset-1 outline-gray-300 has-[input:focus-within]:outline-2 has-[input:focus-within]:-outline-offset-2 has-[input:focus-within]:outline-sky-600">
+                            {/* <div className="shrink-0 text-base text-gray-500 select-none sm:text-sm/6">$</div> */}
+                            <input readOnly value={roomId} type="text" name="price" id="price" className="block min-w-0 grow py-1.5 pr-3 pl-1 text-base text-gray-900 placeholder:text-gray-400 focus:outline-none sm:text-sm/6" placeholder="0.00" />
+                            <ClipboardCopy size={36} className="text-sky-500 p-2 cursor-pointer" onClick={handleCopyLink} />
+                          </div>
+                        </div>
+                      </>
+                    </Flex>
+                    <Button
+                      color='blue'
+                      loading={loading}
+                      onClick={initiateCallAction}
+                      disabled={connectionStatus !== 'connected'}
+                      className="flex items-center justify-center gap-2 px-6 py-3 bg-green-500 text-white rounded-full shadow-md hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                      <PhoneCall />
+                      Start Call
+                    </Button></>
                 ) : callStatus === 'calling' ? (
                   <div className="flex items-center gap-2 px-6 py-3 bg-yellow-500 text-white rounded-full">
                     <span>Calling...</span>
