@@ -91,7 +91,7 @@ function useConnection(_roomId: string) {
                     updateState({
                         roomStatus: {
                             status: "ROOM_LEFT",
-                            message: `${data.userName} just left!`
+                            message: null
                         },
                         users: members.map(member => member.userDetails)
                     });
