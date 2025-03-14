@@ -1,143 +1,144 @@
-import { RefObject, useEffect, useMemo, useRef, useState } from 'react'
+import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { peerConnectionConfig, signalingServerUrl } from '../utils/signaling-server';
-import { generateRoomId } from '../utils';
+import { generateRoomId, getOrCreatePeerId } from '../utils';
 type ROOM_STATUS = "ROOM_JOINED" | "ROOM_CREATED" | "ROOM_LEFT" | "IDLE"
-
-
+type UserDetail = {
+    userName: string | null,
+    userId: string | null
+}
 function useConnection(_roomId: string) {
-    const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
-    const [callStatus, setCallStatus] = useState<'idle' | 'calling' | 'connected' | 'failed'>('idle');
-    const [isMuted, setIsMuted] = useState(false);
+    // Combined state object to reduce multiple state updates
+    const [state, setState] = useState({
+        connectionStatus: 'disconnected' as 'disconnected' | 'connecting' | 'connected',
+        callStatus: 'idle' as 'idle' | 'calling' | 'connected' | 'failed',
+        isMuted: false,
+        roomId: _roomId,
+        roomStatus: { status: "IDLE" as ROOM_STATUS, message: null as string | null },
+        users: [] as UserDetail[],
+        messages: [] as Record<string, any>[],
+    });
 
+    // User details as separate state since it's updated less frequently
+    const [userDetails, setUserDetails] = useState({
+        userName: null as string | null,
+        userId: getOrCreatePeerId()
+    });
+
+    // Refs don't cause re-renders when modified
     const localAudioRef = useRef<HTMLAudioElement>(null);
     const remoteAudioRef = useRef<HTMLAudioElement>(null);
     const peerConnection = useRef<RTCPeerConnection | null>(null);
     const ws = useRef<WebSocket | null>(null);
     const localStreamRef = useRef<MediaStream | null>(null);
-    const [roomId, setRoomId] = useState<string | null>(_roomId);
-    const roomDetails = { room: roomId }
 
-    // 
+    // Store latest state in ref to avoid stale closure issues
+    const stateRef = useRef(state);
+    stateRef.current = state;
 
-    const [messages, setMessages] = useState<Record<string, any>[]>([]);
-    const [users, setUsers] = useState<string[]>([]);
-    const [status, setStatus] = useState<ROOM_STATUS>("IDLE")
-
-
-    const sendMessage = (data: Record<string, any>) => {
-        if (ws.current?.readyState === WebSocket.OPEN) {
-            ws.current.send(JSON.stringify(data));
-        }
-    };
-
-    const handleMessage = (data: Record<string, any>) => {
-        console.log({ data })
-        switch (data.type) {
-            case "room-created":
-                setStatus("ROOM_CREATED");
-                break;
-            case "room-joined":
-                setStatus("ROOM_JOINED");
-                break;
-            case "room-left":
-                setStatus("ROOM_LEFT");
-                break;
-            case "user-joined":
-                setUsers((prev) => [...prev, data.userId]);
-                break;
-            case "user-left":
-                setUsers((prev) => prev.filter((id) => id !== data.userId));
-                break;
-            case "message":
-                setMessages((prev) => [...prev, data]);
-                break;
-            default:
-                console.warn("Unknown message type:", data);
-        }
-    };
-
-    const createRoom = (roomId: string) => {
-        sendMessage({ type: "create-room", room: roomId });
-    };
-
-    const joinRoom = (roomId: string, userId: string) => {
-        sendMessage({ type: "join-room", room: roomId, userId });
-    };
-
-    const leaveRoom = (roomId: string, userId: string) => {
-        sendMessage({ type: "leave-room", room: roomId, userId });
-    };
-
-    const sendChatMessage = (roomId: string, userId: string, message: Record<string, any>) => {
-        sendMessage({ type: "message", room: roomId, userId, message });
-    };
-
-
-    // Initialize WebRTC connection
-    useEffect(() => {
-        initializeConnection();
-
-        return () => {
-            closeConnection();
-
-        };
+    // Helper function to update part of the state
+    const updateState = useCallback((updates: Partial<typeof state>) => {
+        setState(prev => ({ ...prev, ...updates }));
     }, []);
 
-    // Initialize WebSocket and WebRTC connections
-    const initializeConnection = () => {
-        setConnectionStatus('connecting');
+    console.log({ userDetails, })
+
+    // WebSocket message handling - memoized to prevent recreation
+    const handleWebSocketMessage = useCallback(async (messageData: string) => {
+        try {
+            const data = JSON.parse(messageData);
+
+            switch (data.type) {
+                case 'offer':
+                    await handleOffer(data.offer);
+                    updateState({ callStatus: 'connected' });
+                    break;
+
+                case 'answer':
+                    await handleAnswer(data.answer);
+                    updateState({ callStatus: 'connected' });
+                    break;
+
+                case 'candidate':
+                    if (data.candidate && data.candidate.candidate) {
+                        await handleCandidate(data.candidate);
+                    }
+                    break;
+
+                case 'room-created': {
+                    updateState({
+                        roomStatus: {
+                            status: "ROOM_CREATED",
+                            message: `room created!`
+                        },
+                    });
+                    break;
+                }
+
+                case 'room-joined': {
+                    if (data.userId !== userDetails.userId) {
+                        updateState({
+                            roomStatus: {
+                                status: "ROOM_JOINED",
+                                message: `${data.userName} just joined!`
+                            },
+                        });
+                    }
+                    break;
+                }
+                case 'room-members':
+                    console.log("Members : ", data.members)
+                    const members = data.members ? (data.members as { userDetails: UserDetail }[]) : []
+                    updateState({
+                        roomStatus: {
+                            status: "ROOM_LEFT",
+                            message: `${data.userName} just left!`
+                        },
+                        users: members.map(member => member.userDetails)
+                    });
+                    break;
+                case 'room-left':
+                    updateState({
+                        roomStatus: {
+                            status: "ROOM_LEFT",
+                            message: `${data.userName} just left!`
+                        }
+                    });
+                    break;
+            }
+        } catch (error) {
+            console.error("Error handling message:", error);
+        }
+    }, [userDetails.userId, updateState]);
+
+    // Initialize WebSocket connection - memoized
+    const initializeConnection = useCallback(() => {
+        updateState({ connectionStatus: 'connecting' });
 
         // Create WebSocket connection
-        ws.current = new WebSocket(signalingServerUrl + `?roomId=${_roomId}`);
+        ws.current = new WebSocket(signalingServerUrl + `?roomId=${_roomId}&userId=${userDetails.userId}`);
 
         ws.current.onopen = () => {
-            console.log("Connected to signaling server");
-            setConnectionStatus('connected');
+            updateState({ connectionStatus: 'connected' });
         };
 
         ws.current.onclose = () => {
-            console.log("Disconnected from signaling server");
-            setConnectionStatus('disconnected');
+            updateState({ connectionStatus: 'disconnected' });
         };
 
-        ws.current.onerror = (error) => {
-            console.error("WebSocket error:", error);
-            setConnectionStatus('disconnected');
-            setCallStatus('failed');
+        ws.current.onerror = () => {
+            updateState({
+                connectionStatus: 'disconnected',
+                callStatus: 'failed'
+            });
         };
 
-        ws.current.onmessage = async (message) => {
-            console.log("Received message from Server:", message.data);
-
-            try {
-                const data = JSON.parse(message.data);
-                console.log("data parsed", data.type)
-                if (data.type === 'offer') {
-                    console.log('Received offer:', data);
-                    await handleOffer(data.offer);
-                    setCallStatus('connected');
-                } else if (data.type === 'answer') {
-                    console.log('Received answer:', data);
-                    await handleAnswer(data.answer);
-                    setCallStatus('connected');
-                } else if (data.type === 'candidate' && data.candidate && data.candidate.candidate) {
-                    console.log('Received candidate:', data);
-                    await handleCandidate(data.candidate);
-                } else if (data.type === "room-created") {
-                    setStatus("ROOM_CREATED");
-                } else if (data.type === "room-joined") {
-                    setStatus("ROOM_JOINED");
-                } else if (data.type === "room-left") {
-                    setStatus("ROOM_LEFT");
-                }
-            } catch (error) {
-                console.error("Error handling message:", error);
-            }
+        ws.current.onmessage = (message) => {
+            handleWebSocketMessage(message.data);
         };
-    };
+    }, [_roomId, userDetails.userId, handleWebSocketMessage, updateState]);
 
-    // Close all connections
-    const closeConnection = () => {
+    // Close all connections - memoized
+    const closeConnection = useCallback(() => {
         // Close media tracks
         if (localStreamRef.current) {
             localStreamRef.current.getTracks().forEach(track => track.stop());
@@ -156,59 +157,72 @@ function useConnection(_roomId: string) {
             ws.current = null;
         }
 
-        setCallStatus('idle');
-        setConnectionStatus('disconnected');
-    };
+        updateState({
+            callStatus: 'idle',
+            connectionStatus: 'disconnected'
+        });
+    }, [updateState]);
 
-    // Start audio call
-    const startAudioCall = async () => {
-        if (connectionStatus !== 'connected') {
-            console.warn("Not connected to signaling server");
-            return;
-        }
+    // Set up WebRTC event handlers - memoized
+    const setupPeerConnectionEventHandlers = useCallback(() => {
+        if (!peerConnection.current) return;
 
-        setCallStatus('calling');
+        // Handle ICE connection state changes
+        peerConnection.current.oniceconnectionstatechange = () => {
+            const iceState = peerConnection.current?.iceConnectionState;
 
-        try {
-            // Create new RTCPeerConnection
-            peerConnection.current = new RTCPeerConnection(peerConnectionConfig);
-
-            // Set up event handlers
-            setupPeerConnectionEventHandlers();
-
-            // Get user microphone audio
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            localStreamRef.current = stream;
-
-            if (localAudioRef.current) {
-                localAudioRef.current.srcObject = stream;
+            if (iceState === 'disconnected' || iceState === 'failed') {
+                updateState({ callStatus: 'failed' });
             }
+        };
 
-            // Add audio tracks to the connection
-            stream.getTracks().forEach(track => {
-                if (peerConnection.current) {
-                    peerConnection.current.addTrack(track, stream);
-                }
-            });
+        // Handle signaling state changes
+        peerConnection.current.onsignalingstatechange = () => {
+            // Only log, no state updates
+            console.log('Signaling State:', peerConnection.current?.signalingState);
+        };
 
-            // Create and send offer
-            const offer = await peerConnection.current.createOffer();
-            await peerConnection.current.setLocalDescription(offer);
-
-            if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-                ws.current.send(JSON.stringify({ type: "offer", offer }));
-            } else {
-                console.error("WebSocket not connected");
-                setCallStatus('failed');
+        // Handle ICE candidates
+        peerConnection.current.onicecandidate = (event) => {
+            if (event.candidate && ws.current && ws.current.readyState === WebSocket.OPEN) {
+                ws.current.send(JSON.stringify({ type: "candidate", candidate: event.candidate }));
             }
-        } catch (err) {
-            console.error("Error starting audio call:", err);
-            setCallStatus('failed');
-        }
-    };
+        };
 
-    // Handle received offer
-    const handleOffer = async (offer: RTCSessionDescriptionInit) => {
+        // Handle remote tracks
+        peerConnection.current.ontrack = (event) => {
+            if (remoteAudioRef.current) {
+                remoteAudioRef.current.srcObject = event.streams[0];
+            }
+        };
+    }, [updateState]);
+
+    // WebSocket message sending - memoized
+    const sendMessage = useCallback((data: Record<string, any>) => {
+        if (ws.current?.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify(data));
+        }
+    }, []);
+
+    // Room management functions - memoized
+    const createRoom = useCallback((roomId: string) => {
+        sendMessage({ type: "create-room", room: roomId, ...userDetails });
+    }, [sendMessage, userDetails]);
+
+    const joinRoom = useCallback((roomId: string, userId: string) => {
+        sendMessage({ type: "join-room", room: roomId, ...userDetails });
+    }, [sendMessage, userDetails]);
+
+    const leaveRoom = useCallback((roomId: string, userId: string) => {
+        sendMessage({ type: "leave-room", room: roomId, ...userDetails });
+    }, [sendMessage, userDetails]);
+
+    const sendChatMessage = useCallback((roomId: string, userId: string, message: Record<string, any>) => {
+        sendMessage({ type: "message", room: roomId, userId, message });
+    }, [sendMessage]);
+
+    // Handle received offer - memoized
+    const handleOffer = useCallback(async (offer: RTCSessionDescriptionInit) => {
         try {
             // Create new RTCPeerConnection if not exists
             if (!peerConnection.current) {
@@ -243,12 +257,12 @@ function useConnection(_roomId: string) {
             }
         } catch (error) {
             console.error("Error handling offer:", error);
-            setCallStatus('failed');
+            updateState({ callStatus: 'failed' });
         }
-    };
+    }, [setupPeerConnectionEventHandlers, updateState]);
 
-    // Handle received answer
-    const handleAnswer = async (answer: RTCSessionDescriptionInit) => {
+    // Handle received answer - memoized
+    const handleAnswer = useCallback(async (answer: RTCSessionDescriptionInit) => {
         if (!peerConnection.current) {
             console.error("Peer connection is null when handling answer");
             return;
@@ -263,10 +277,10 @@ function useConnection(_roomId: string) {
         } catch (error) {
             console.error("Error setting remote description:", error);
         }
-    };
+    }, []);
 
-    // Handle ICE candidate
-    const handleCandidate = async (candidate: RTCIceCandidateInit) => {
+    // Handle ICE candidate - memoized
+    const handleCandidate = useCallback(async (candidate: RTCIceCandidateInit) => {
         if (!peerConnection.current) {
             console.error("Peer connection is null when handling ICE candidate");
             return;
@@ -277,65 +291,130 @@ function useConnection(_roomId: string) {
         } catch (error) {
             console.error("Error adding ICE candidate:", error);
         }
-    };
+    }, []);
 
-    // Set up WebRTC event handlers
-    const setupPeerConnectionEventHandlers = () => {
-        if (!peerConnection.current) return;
+    // Start audio call - memoized
+    const startAudioCall = useCallback(async () => {
+        if (state.connectionStatus !== 'connected') {
+            console.warn("Not connected to signaling server");
+            return;
+        }
 
-        // Handle ICE connection state changes
-        peerConnection.current.oniceconnectionstatechange = () => {
-            console.log('ICE Connection State:', peerConnection.current?.iceConnectionState);
+        // Batch state updates
+        updateState({ callStatus: 'calling' });
 
-            if (peerConnection.current?.iceConnectionState === 'disconnected' ||
-                peerConnection.current?.iceConnectionState === 'failed') {
-                setCallStatus('failed');
+        try {
+            // Create new RTCPeerConnection
+            peerConnection.current = new RTCPeerConnection(peerConnectionConfig);
+
+            // Set up event handlers
+            setupPeerConnectionEventHandlers();
+
+            // Get user microphone audio
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            localStreamRef.current = stream;
+
+            if (localAudioRef.current) {
+                localAudioRef.current.srcObject = stream;
             }
-        };
 
-        // Handle signaling state changes
-        peerConnection.current.onsignalingstatechange = () => {
-            console.log('Signaling State:', peerConnection.current?.signalingState);
-        };
+            // Add audio tracks to the connection
+            stream.getTracks().forEach(track => {
+                if (peerConnection.current) {
+                    peerConnection.current.addTrack(track, stream);
+                }
+            });
 
-        // Handle ICE candidates
-        peerConnection.current.onicecandidate = (event) => {
-            if (event.candidate && ws.current && ws.current.readyState === WebSocket.OPEN) {
-                console.log('Sending ICE Candidate:', event.candidate);
-                ws.current.send(JSON.stringify({ type: "candidate", candidate: event.candidate }));
+            // Create and send offer
+            const offer = await peerConnection.current.createOffer();
+            await peerConnection.current.setLocalDescription(offer);
+
+            if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+                ws.current.send(JSON.stringify({ type: "offer", offer }));
+            } else {
+                console.error("WebSocket not connected");
+                updateState({ callStatus: 'failed' });
             }
-        };
+        } catch (err) {
+            console.error("Error starting audio call:", err);
+            updateState({ callStatus: 'failed' });
+        }
+    }, [state.connectionStatus, setupPeerConnectionEventHandlers, updateState]);
 
-        // Handle remote tracks
-        peerConnection.current.ontrack = (event) => {
-            console.log("Received remote track:", event.streams[0]);
-
-            if (remoteAudioRef.current) {
-                remoteAudioRef.current.srcObject = event.streams[0];
-            }
-        };
-    };
-
-    // Toggle mute
-    const toggleMute = () => {
+    // Toggle mute - memoized
+    const toggleMute = useCallback(() => {
         if (localStreamRef.current) {
             const audioTracks = localStreamRef.current.getAudioTracks();
 
             audioTracks.forEach(track => {
-                track.enabled = isMuted;
+                track.enabled = state.isMuted;
             });
 
-            setIsMuted(!isMuted);
+            updateState({ isMuted: !state.isMuted });
         }
-    };
+    }, [state.isMuted, updateState]);
 
-    // End call
-    const endCall = () => {
+    // End call - memoized
+    const endCall = useCallback(() => {
         closeConnection();
         initializeConnection();
-    };
+    }, [closeConnection, initializeConnection]);
 
-    return [{ status, roomId, connectionStatus, callStatus, isMuted, localAudioRef, localStreamRef, remoteAudioRef }, { initializeConnection, closeConnection, toggleMute, endCall, handleAnswer, startAudioCall, createRoom, joinRoom, leaveRoom }] as const
+    // Initialize connection on mount
+    useEffect(() => {
+        initializeConnection();
+        return () => {
+            closeConnection();
+        };
+    }, [initializeConnection, closeConnection]);
+
+    // Create a stable reference to the state values we want to expose
+    const stateValues = useMemo(() => ({
+        userDetails,
+        roomStatus: state.roomStatus,
+        roomId: state.roomId,
+        connectionStatus: state.connectionStatus,
+        callStatus: state.callStatus,
+        isMuted: state.isMuted,
+        localAudioRef,
+        localStreamRef,
+        remoteAudioRef,
+        users: state.users
+    }), [
+        userDetails,
+        state.roomStatus,
+        state.roomId,
+        state.connectionStatus,
+        state.callStatus,
+        state.isMuted,
+        state.users
+    ]);
+
+    // Create a stable reference to the actions we want to expose
+    const actions = useMemo(() => ({
+        initializeConnection,
+        closeConnection,
+        toggleMute,
+        endCall,
+        handleAnswer,
+        startAudioCall,
+        createRoom,
+        joinRoom,
+        leaveRoom,
+        setUserDetails
+    }), [
+        initializeConnection,
+        closeConnection,
+        toggleMute,
+        endCall,
+        handleAnswer,
+        startAudioCall,
+        createRoom,
+        joinRoom,
+        leaveRoom
+    ]);
+
+    return [stateValues, actions] as const;
 }
 
-export default useConnection
+export default useConnection;

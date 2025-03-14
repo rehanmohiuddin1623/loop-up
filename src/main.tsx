@@ -4,6 +4,7 @@ import App from './App.tsx'
 import "@radix-ui/themes/styles.css";
 import { Theme } from "@radix-ui/themes";
 import { BrowserRouter, Routes, Route } from "react-router";
+import { ToastProvider } from './components/notification-toast/index.tsx';
 
 export function AppNav() {
   return (
@@ -16,7 +17,9 @@ export function AppNav() {
 createRoot(document.getElementById('root')!).render(
   <BrowserRouter>
     <Theme>
-      <AppNav />
+      <ToastProvider>
+        <AppNav />
+      </ToastProvider>
     </Theme>
   </BrowserRouter>,
 )

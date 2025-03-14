@@ -23,3 +23,27 @@ export const copyText = (textToCopy: string) => {
         }
     })
 };
+
+export function shareContent({ title, text, url }: { title: string; text: string; url: string }) {
+    return new Promise(async (resolve, reject) => {
+        if (navigator.share) {
+            await navigator.share({
+                title,
+                text,
+                url
+            })
+            resolve(true)
+        } else {
+            reject("Web Share API not supported on this browser.");
+        }
+    })
+}
+
+export function getAvatarInitial(name: string | null) {
+    if (!name) return "-";
+    return name.trim().charAt(0).toUpperCase();
+}
+
+export const getOrCreatePeerId = () => {
+    return crypto.randomUUID();
+}

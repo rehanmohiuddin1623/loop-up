@@ -6,14 +6,14 @@ import * as Separator from '@radix-ui/react-separator';
 import * as Avatar from '@radix-ui/react-avatar';
 import { Cross2Icon } from '@radix-ui/react-icons';
 import { Button, Flex } from "@radix-ui/themes";
-import { Clipboard, ClipboardCopy, Mic, MicOff, PhoneCall, PhoneOff } from "lucide-react";
+import { Mic, MicOff, PhoneCall, PhoneOff, Share } from "lucide-react";
 import useConnection from "./hooks/useConnection";
 import { signalingServerUrl } from "./utils/signaling-server";
-import { Label } from "radix-ui";
-import { copyText, generateRoomId } from "./utils";
-import useRoom from "./hooks/useRoom";
-import { useLocation, useNavigate } from "react-router";
+import { generateRoomId, getAvatarInitial, shareContent } from "./utils";
 import { useSearchParams } from "react-router-dom";
+import { useToast } from "./components/notification-toast";
+import InputFromModal from "./components/input-from-modal";
+import ReadOnlyLabelWithIcon from "./components/read-only-label";
 
 
 
@@ -27,7 +27,9 @@ export default function App() {
   const roomIdFromParam = searchParams.get("roomId")
   const _roomId = roomIdFromParam || useMemo(() => generateRoomId(), [])
 
-  const [{ status, roomId, localAudioRef, localStreamRef, remoteAudioRef, callStatus, connectionStatus, isMuted }, { endCall, startAudioCall, toggleMute, initializeConnection, joinRoom, leaveRoom, createRoom, }] = useConnection(_roomId)
+  const [{ users, roomStatus, roomId, localAudioRef, localStreamRef, remoteAudioRef, callStatus, connectionStatus, isMuted, userDetails }, { endCall, startAudioCall, toggleMute, initializeConnection, joinRoom, setUserDetails, createRoom, }] = useConnection(_roomId)
+
+  const { addToast } = useToast()
 
   const closeAudioContext = () => {
     // Close audio context
@@ -47,19 +49,24 @@ export default function App() {
       joinRoom(roomIdFromParam, "")
       return
     }
-    createRoom(roomId as string)
+    createRoom(roomId as string,)
   }
 
   useEffect(() => {
-    console.log({ status })
-    switch (status) {
+    console.log({ roomStatus })
+    setLoading(false)
+    switch (roomStatus.status) {
       case "ROOM_CREATED":
+        startAudioCall()
+        break;
       case "ROOM_JOINED":
-        setLoading(false)
         startAudioCall()
         break;
     }
-  }, [status])
+    if (roomStatus.message) {
+      addToast({ title: roomStatus.message })
+    }
+  }, [roomStatus])
 
   // Audio level meter
   useEffect(() => {
@@ -101,10 +108,14 @@ export default function App() {
     source.connect(audioAnalyser.current);
   };
 
-  const handleCopyLink = async () => {
+  const handleShare = async () => {
     const currentUrl = new URL(window.location.href);
     currentUrl.searchParams.set("roomId", _roomId);
-    await copyText(currentUrl.toString())
+    await shareContent({
+      title: "📞 Let's Connect!",
+      text: "Tap the link below to call me instantly.",
+      url: currentUrl.toString(),
+    })
   }
 
   return (
@@ -159,8 +170,13 @@ export default function App() {
               <div className="flex justify-center gap-8 mb-4">
                 <div className="flex flex-col items-center">
                   <Avatar.Root className="flex items-center justify-center w-20 h-20 rounded-full bg-blue-100 overflow-hidden">
-                    <Avatar.Fallback className="text-blue-500 text-xl font-semibold">You</Avatar.Fallback>
+                    <Avatar.Fallback className="text-blue-500 text-xl font-semibold">
+                      {getAvatarInitial(userDetails.userName)}
+                    </Avatar.Fallback>
                   </Avatar.Root>
+                  {callStatus !== "connected" ? <InputFromModal onSubmit={(userName) => setUserDetails({ ...userDetails, userName })} >
+                    <div><ReadOnlyLabelWithIcon text={userDetails.userName || ""} /></div>
+                  </InputFromModal> : <ReadOnlyLabelWithIcon readonly text={userDetails.userName || ""} />}
                   <span className="mt-2"></span>
 
                   {/* Audio meter */}
@@ -176,11 +192,17 @@ export default function App() {
                 </div>
 
                 {callStatus === 'connected' && (
-                  <div className="flex flex-col items-center">
-                    <Avatar.Root className="flex items-center justify-center w-20 h-20 rounded-full bg-green-100 overflow-hidden">
-                      <Avatar.Fallback className="text-green-500 text-xl font-semibold">Peer</Avatar.Fallback>
-                    </Avatar.Root>
-                    <span className="mt-2">Peer</span>
+                  <div className="flex gap-2 items-center">
+                    {users.map(user => user.userId !== userDetails.userId ? (
+                      <div className="flex flex-col items-center">
+                        <Avatar.Root className="flex items-center justify-center w-20 h-20 rounded-full bg-green-100 overflow-hidden">
+                          <Avatar.Fallback className="text-green-500 text-xl font-semibold">
+                            {getAvatarInitial(user.userName)}
+                          </Avatar.Fallback>
+                        </Avatar.Root>
+                        <span className="mt-2">{user.userName}</span>
+                      </div>
+                    ) : <></>)}
                   </div>
                 )}
               </div>
@@ -189,28 +211,30 @@ export default function App() {
               <div className="flex flex-col gap-4">
                 {callStatus === 'idle' ? (
                   <>
-                    <Flex className="flex items-center gap-4" >
-                      <>
-                        <Label.Label>Room Name</Label.Label>
+                    <Flex className="flex flex-col items-center md:gap-4" >
+                      <div className="">
+                        <label className="text-sm font-medium">Room Name</label>
                         <div className="">
                           <div className="flex items-center rounded-md bg-white pl-3 outline-1 -outline-offset-1 outline-gray-300 has-[input:focus-within]:outline-2 has-[input:focus-within]:-outline-offset-2 has-[input:focus-within]:outline-sky-600">
                             {/* <div className="shrink-0 text-base text-gray-500 select-none sm:text-sm/6">$</div> */}
-                            <input readOnly value={roomId} type="text" name="price" id="price" className="block min-w-0 grow py-1.5 pr-3 pl-1 text-base text-gray-900 placeholder:text-gray-400 focus:outline-none sm:text-sm/6" placeholder="0.00" />
-                            <ClipboardCopy size={36} className="text-sky-500 p-2 cursor-pointer" onClick={handleCopyLink} />
+                            <input readOnly value={roomId || ""} type="text" name="price" id="price" className="block min-w-0 grow py-1.5 pr-3 pl-1 text-base text-gray-900 placeholder:text-gray-400 focus:outline-none sm:text-sm/6" placeholder="0.00" />
+                            <Share size={36} className="text-sky-500 p-2 cursor-pointer" onClick={handleShare} />
                           </div>
                         </div>
-                      </>
+                      </div>
                     </Flex>
                     <Button
+                      onClick={initiateCallAction}
                       color='blue'
                       loading={loading}
-                      onClick={initiateCallAction}
-                      disabled={connectionStatus !== 'connected'}
+                      disabled={connectionStatus !== 'connected' || !userDetails.userName?.length}
                       className="flex items-center justify-center gap-2 px-6 py-3 bg-green-500 text-white rounded-full shadow-md hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
                     >
                       <PhoneCall />
                       Start Call
-                    </Button></>
+                    </Button>
+
+                  </>
                 ) : callStatus === 'calling' ? (
                   <div className="flex items-center gap-2 px-6 py-3 bg-yellow-500 text-white rounded-full">
                     <span>Calling...</span>
@@ -230,6 +254,7 @@ export default function App() {
                       onClick={() => {
                         endCall();
                         closeAudioContext()
+                        setLoading(false)
                       }}
                       className="flex items-center justify-center w-12 h-12 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600"
                     >
