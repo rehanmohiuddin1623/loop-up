@@ -1,16 +1,13 @@
 import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { peerConnectionConfig, signalingServerUrl } from '../utils/signaling-server';
 import { generateRoomId, getOrCreatePeerId } from '../utils';
-type ROOM_STATUS = "ROOM_JOINED" | "ROOM_CREATED" | "ROOM_LEFT" | "IDLE"
-type UserDetail = {
-    userName: string | null,
-    userId: string | null
-}
+import { CALL_STATUS, ROOM_STATUS, UserDetail } from '../@types';
+
 function useConnection(_roomId: string) {
     // Combined state object to reduce multiple state updates
     const [state, setState] = useState({
         connectionStatus: 'disconnected' as 'disconnected' | 'connecting' | 'connected',
-        callStatus: 'idle' as 'idle' | 'calling' | 'connected' | 'failed',
+        callStatus: 'idle' as CALL_STATUS,
         isMuted: false,
         roomId: _roomId,
         roomStatus: { status: "IDLE" as ROOM_STATUS, message: null as string | null },
@@ -90,7 +87,7 @@ function useConnection(_roomId: string) {
                     const members = data.members ? (data.members as { userDetails: UserDetail }[]) : []
                     updateState({
                         roomStatus: {
-                            status: "ROOM_LEFT",
+                            status: state.roomStatus.status,
                             message: null
                         },
                         users: members.map(member => member.userDetails)

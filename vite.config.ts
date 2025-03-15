@@ -5,4 +5,12 @@ import tailwindcss from '@tailwindcss/vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    terserOptions: {
+      compress: {
+        drop_console: true, // Remove all console logs
+        drop_debugger: true, // Remove debugger statements
+      },
+    },
+  },
 })

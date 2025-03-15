@@ -1,30 +1,25 @@
 import React, { useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 
-const InputFromModal = ({ children, onSubmit }: { children: React.ReactNode, onSubmit: (userName: string) => void }) => {
-  const [open, setOpen] = useState(false);
+const InputFromModal = ({ open, onSubmit, onCancel }: { open: boolean, onSubmit: (userName: string) => void; onCancel: () => void }) => {
   const userName = useRef('');
 
   const handleSubmit = (e: React.ChangeEvent<HTMLFormElement>) => {
     e.preventDefault();
     console.log('Submitted name:', userName.current);
     onSubmit(userName.current)
-    setOpen(false);
   };
 
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger asChild>
-        {children}
-      </Dialog.Trigger>
+    <Dialog.Root open={open}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 data-[state=open]:animate-overlayShow" />
         <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-md shadow-md p-6 max-w-md w-full data-[state=open]:animate-contentShow">
           <Dialog.Title className="text-xl font-bold mb-4">
-            Enter Your Name
+            Let's get started!
           </Dialog.Title>
           <Dialog.Description className="text-gray-600 mb-5">
-            Please provide your name in the field below.
+            Please enter your name to continue.
           </Dialog.Description>
 
           <form onSubmit={handleSubmit}>
@@ -48,12 +43,13 @@ const InputFromModal = ({ children, onSubmit }: { children: React.ReactNode, onS
 
             <div className="flex justify-end gap-3 mt-6">
               <Dialog.Close asChild>
-                <button
+                {/* <button
                   type="button"
                   className="px-4 py-2 text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
+                  onClick={onCancel}
                 >
                   Cancel
-                </button>
+                </button> */}
               </Dialog.Close>
               <button
                 color='blue'
@@ -66,14 +62,14 @@ const InputFromModal = ({ children, onSubmit }: { children: React.ReactNode, onS
             </div>
           </form>
 
-          <Dialog.Close asChild>
+          {/* <Dialog.Close asChild>
             <button
               className="absolute top-4 right-4 inline-flex items-center justify-center w-6 h-6 rounded-full text-gray-500 hover:bg-gray-100"
               aria-label="Close"
             >
               ✕
             </button>
-          </Dialog.Close>
+          </Dialog.Close> */}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
