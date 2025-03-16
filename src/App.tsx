@@ -115,8 +115,8 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-blue-100 p-10">
-      <UserProfileCard voiceLevel={audioLevel} name={userDetails.userName || ""} isOnline reconnect={initializeConnection} connectionStatus={connectionStatus} handleDetailSubmit={(userName) => setUserDetails({ ...userDetails, userName })} />
+    <div className="flex flex-col items-center min-h-screen md:w-full bg-blue-100 h-full justify-start">
+      <UserProfileCard copyInfo={handleShare} voiceLevel={audioLevel} name={userDetails.userName || ""} isOnline reconnect={initializeConnection} connectionStatus={connectionStatus} handleDetailSubmit={(userName) => setUserDetails({ ...userDetails, userName })} />
 
 
       {callStatus === "connected" ?
@@ -140,11 +140,7 @@ export default function App() {
 
             {/* Call controls */}
             <div className="flex flex-col gap-4 w-full ">
-              {callStatus === 'calling' ? (
-                <div className="flex items-center gap-2 px-6 py-3 bg-yellow-500 text-white rounded-full">
-                  <span>Calling...</span>
-                </div>
-              ) : callStatus === 'connected' ? (
+              {callStatus === 'connected' ? (
                 <Flex gap={"3"} align={"center"} justify={"center"} className="justify-center w-full" >
                   <Button
                     color='gray'
@@ -190,10 +186,16 @@ export default function App() {
           <audio ref={remoteAudioRef} autoPlay className="hidden" />
         </Flex> :
         <Flex className="w-full p-2" direction={"row"} justify={"center"}  >
-          <VoiceCallButton callStatus={callStatus} onClick={initiateCallAction} roomId={roomId} shareAction={handleShare} />
+          <VoiceCallButton loading={loading} callStatus={callStatus} onClick={initiateCallAction} roomId={roomId} />
         </Flex>
       }
-
+      <footer className="py-6 text-slate-500 mt-auto md:mt-0">
+        <div className="container mx-auto flex flex-col md:flex-row items-center justify-between px-4">
+          <p className="text-sm">Crafted with ❤️ by {" "}
+            <a target="_blank" href="https://www.linkedin.com/in/mohammed-rehan-mohiuddin-ab90a9190" className="hover:underline">rehan</a>
+          </p>
+        </div>
+      </footer>
       {/* Connection Status Dialog */}
       <Dialog.Root open={callStatus === 'failed'}>
         <Dialog.Portal>
