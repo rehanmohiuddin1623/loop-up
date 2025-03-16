@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import * as Dialog from '@radix-ui/react-dialog';
-import { Cross2Icon } from '@radix-ui/react-icons';
-import { Button, Flex } from "@radix-ui/themes";
-import { Mic, MicOff, PhoneOff } from "lucide-react";
+import { Flex } from "@radix-ui/themes";
 import useConnection from "./hooks/useConnection";
 import { generateRoomId, shareContent } from "./utils";
 import { useSearchParams } from "react-router-dom";
 import { useToast } from "./components/notification-toast";
 import UserProfileCard from "./components/user-profile-card";
-import MemberAvatar from "./components/member-avatar";
 import VoiceCallButton from "./components/voice-call-start";
+import MeetView from "./meet-view";
+import Footer from "./components/footer";
+import ConnectionError from "./components/connection-error";
 
 
 
@@ -120,112 +119,16 @@ export default function App() {
 
 
       {callStatus === "connected" ?
-        <Flex direction={"column"} gap={"3"} style={{ padding: 12 }} className="w-full max-w-md bg-white rounded-lg shadow-md p-4">
-          {/* <h1 className="text-2xl font-bold mb-4 text-center">Loop Up Audio Call</h1> */}
-
-          {/* <Separator.Root className="h-px bg-gray-200 my-4" /> */}
-
-          <div className="flex flex-col items-center gap-4">
-            {/* User avatars */}
-            <div className="flex justify-center gap-8 mb-4">
-
-              {callStatus === 'connected' && (
-                <div className="flex gap-2 items-center">
-                  {users.map(user => user.userId !== userDetails.userId ? (
-                    <MemberAvatar userName={user.userName || ""} />
-                  ) : <></>)}
-                </div>
-              )}
-            </div>
-
-            {/* Call controls */}
-            <div className="flex flex-col gap-4 w-full ">
-              {callStatus === 'connected' ? (
-                <Flex gap={"3"} align={"center"} justify={"center"} className="justify-center w-full" >
-                  <Button
-                    color='gray'
-                    onClick={toggleMute}
-                    className={`flex items-center justify-center w-12 h-12 rounded-full ${isMuted ? 'bg-red-500' : 'bg-gray-500'} text-white shadow-md hover:opacity-90`}
-                  >
-                    {isMuted ? <MicOff /> : <Mic />}
-                  </Button>
-
-                  <Button
-                    color='red'
-                    onClick={() => {
-                      endCall();
-                      closeAudioContext()
-                      setLoading(false)
-                    }}
-                    style={{ width: "20vw" }}
-                    className="flex-1 items-center justify-center w-full h-12 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600"
-                  >
-                    <span>End Call</span>
-                    {/*@ts-ignore */}
-                    <PhoneOff style={{ transform: 'rotate(135deg)' }} />
-                  </Button>
-                </Flex >
-              ) : (
-                <div className="flex flex-col items-center">
-                  <div className="text-red-500 mb-2">Call Failed</div>
-                  <button
-                    onClick={startAudioCall}
-                    className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                  >
-                    Try Again
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-
-
-          {/* Hidden audio elements */}
-          <audio ref={localAudioRef} autoPlay muted className="hidden" />
-          <audio ref={remoteAudioRef} autoPlay className="hidden" />
-        </Flex> :
+        <MeetView
+          {...{ localAudioRef, remoteAudioRef, callStatus, userDetails, users, closeAudioContext, isMuted, setLoading, startAudioCall, toggleMute, endCall }}
+        /> :
         <Flex className="w-full p-2" direction={"row"} justify={"center"}  >
           <VoiceCallButton loading={loading} callStatus={callStatus} onClick={initiateCallAction} roomId={roomId} />
         </Flex>
       }
-      <footer className="py-6 text-slate-500 mt-auto md:mt-0">
-        <div className="container mx-auto flex flex-col md:flex-row items-center justify-between px-4">
-          <p className="text-sm">Crafted with ❤️ by {" "}
-            <a target="_blank" href="https://www.linkedin.com/in/mohammed-rehan-mohiuddin-ab90a9190" className="hover:underline">rehan</a>
-          </p>
-        </div>
-      </footer>
+      <Footer />
       {/* Connection Status Dialog */}
-      <Dialog.Root open={callStatus === 'failed'}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/50" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg p-6 shadow-lg w-96 max-w-full">
-            <Dialog.Title className="text-xl font-bold mb-4">Connection Error</Dialog.Title>
-            <Dialog.Description className="mb-6">
-              There was a problem with the WebRTC connection. Please check your internet connection and try again.
-            </Dialog.Description>
-            <div className="flex justify-end">
-              <Dialog.Close asChild>
-                <button
-                  onClick={endCall}
-                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                >
-                  Close
-                </button>
-              </Dialog.Close>
-            </div>
-            <Dialog.Close asChild>
-              <button
-                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100"
-                onClick={endCall}
-              >
-                <Cross2Icon />
-              </button>
-            </Dialog.Close>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+      <ConnectionError {...{ callStatus, endCall }} />
     </div>
   );
 }

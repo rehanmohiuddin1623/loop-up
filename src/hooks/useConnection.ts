@@ -1,6 +1,6 @@
-import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { peerConnectionConfig, signalingServerUrl } from '../utils/signaling-server';
-import { generateRoomId, getOrCreatePeerId } from '../utils';
+import { getOrCreatePeerId } from '../utils';
 import { CALL_STATUS, ROOM_STATUS, UserDetail } from '../@types';
 
 function useConnection(_roomId: string) {

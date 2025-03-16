@@ -43,13 +43,6 @@ const InputFromModal = ({ open, onSubmit, onCancel }: { open: boolean, onSubmit:
 
             <div className="flex justify-end gap-3 mt-6">
               <Dialog.Close asChild>
-                {/* <button
-                  type="button"
-                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
-                  onClick={onCancel}
-                >
-                  Cancel
-                </button> */}
               </Dialog.Close>
               <button
                 color='blue'
@@ -61,15 +54,6 @@ const InputFromModal = ({ open, onSubmit, onCancel }: { open: boolean, onSubmit:
               </button>
             </div>
           </form>
-
-          {/* <Dialog.Close asChild>
-            <button
-              className="absolute top-4 right-4 inline-flex items-center justify-center w-6 h-6 rounded-full text-gray-500 hover:bg-gray-100"
-              aria-label="Close"
-            >
-              ✕
-            </button>
-          </Dialog.Close> */}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
