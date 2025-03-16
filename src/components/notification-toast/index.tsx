@@ -159,7 +159,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                     />
                 ))}
 
-                <ToastPrimitive.Viewport className="fixed bottom-4 right-4 flex flex-col gap-2 w-full max-w-sm z-50" />
+                <ToastPrimitive.Viewport className="fixed bottom-4 flex flex-col gap-2 w-full max-w-sm z-50 justify-center items-center" />
             </ToastPrimitive.Provider>
         </ToastContext.Provider>
     );
