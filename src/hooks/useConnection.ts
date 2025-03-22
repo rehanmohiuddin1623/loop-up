@@ -4,22 +4,24 @@ import { getOrCreatePeerId } from '../utils';
 import { CALL_STATUS, ROOM_STATUS, UserDetail } from '../@types';
 
 function useConnection(_roomId: string) {
-    // Combined state object to reduce multiple state updates
-    const [state, setState] = useState({
-        connectionStatus: 'disconnected' as 'disconnected' | 'connecting' | 'connected',
-        callStatus: 'idle' as CALL_STATUS,
-        isMuted: false,
-        roomId: _roomId,
-        roomStatus: { status: "IDLE" as ROOM_STATUS, message: null as string | null },
-        users: [] as UserDetail[],
-        messages: [] as Record<string, any>[],
-    });
+    // Split state into smaller, more focused pieces to prevent unnecessary re-renders
+    const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
+    const [callStatus, setCallStatus] = useState<CALL_STATUS>('idle');
+    const [isMuted, setIsMuted] = useState(false);
+    const [roomStatus, setRoomStatus] = useState<{ status: ROOM_STATUS; message: string | null }>({ status: "IDLE", message: null });
+    const [users, setUsers] = useState<UserDetail[]>([]);
+    const [messages, setMessages] = useState<Record<string, any>[]>([]);
+    const [audioLevels, setAudioLevels] = useState<Record<string, number>>({});
 
-    // User details as separate state since it's updated less frequently
-    const [userDetails, setUserDetails] = useState({
+
+    // User details in a ref since it's mostly stable and causes fewer re-renders when updated
+    const userDetailsRef = useRef({
         userName: null as string | null,
         userId: getOrCreatePeerId()
     });
+
+    // Store roomId in a ref since it's provided as a parameter and shouldn't change
+    const roomIdRef = useRef(_roomId);
 
     // Refs don't cause re-renders when modified
     const localAudioRef = useRef<HTMLAudioElement>(null);
@@ -28,18 +30,7 @@ function useConnection(_roomId: string) {
     const ws = useRef<WebSocket | null>(null);
     const localStreamRef = useRef<MediaStream | null>(null);
 
-    // Store latest state in ref to avoid stale closure issues
-    const stateRef = useRef(state);
-    stateRef.current = state;
-
-    // Helper function to update part of the state
-    const updateState = useCallback((updates: Partial<typeof state>) => {
-        setState(prev => ({ ...prev, ...updates }));
-    }, []);
-
-    console.log({ userDetails, })
-
-    // WebSocket message handling - memoized to prevent recreation
+    // WebSocket message handling
     const handleWebSocketMessage = useCallback(async (messageData: string) => {
         try {
             const data = JSON.parse(messageData);
@@ -47,12 +38,12 @@ function useConnection(_roomId: string) {
             switch (data.type) {
                 case 'offer':
                     await handleOffer(data.offer);
-                    updateState({ callStatus: 'connected' });
+                    setCallStatus('connected');
                     break;
 
                 case 'answer':
                     await handleAnswer(data.answer);
-                    updateState({ callStatus: 'connected' });
+                    setCallStatus('connected');
                     break;
 
                 case 'candidate':
@@ -62,105 +53,59 @@ function useConnection(_roomId: string) {
                     break;
 
                 case 'room-created': {
-                    updateState({
-                        roomStatus: {
-                            status: "ROOM_CREATED",
-                            message: `room created!`
-                        },
+                    setRoomStatus({
+                        status: "ROOM_CREATED",
+                        message: `room created!`
                     });
                     break;
                 }
 
                 case 'room-joined': {
-                    if (data.userId !== userDetails.userId) {
-                        updateState({
-                            roomStatus: {
-                                status: "ROOM_JOINED",
-                                message: `${data.userName} just joined!`
-                            },
+                    if (data.userId !== userDetailsRef.current.userId) {
+                        setRoomStatus({
+                            status: "ROOM_JOINED",
+                            message: `${data.userName} just joined!`
                         });
                     }
                     break;
                 }
-                case 'room-members':
-                    console.log("Members : ", data.members)
-                    const members = data.members ? (data.members as { userDetails: UserDetail }[]) : []
-                    updateState({
-                        roomStatus: {
-                            status: state.roomStatus.status,
-                            message: null
-                        },
-                        users: members.map(member => member.userDetails)
+                case 'room-members': {
+                    console.log("Members : ", data.members);
+                    const members = data.members ? (data.members as { userDetails: UserDetail }[]) : [];
+                    setUsers(members.map(member => member.userDetails));
+                    break;
+                }
+                case 'room-left': {
+                    console.log("left data : ", data);
+                    setRoomStatus({
+                        status: "ROOM_LEFT",
+                        message: `${data.userDetails.userName} just left!`
                     });
                     break;
-                case 'room-left':
-                    updateState({
-                        roomStatus: {
-                            status: "ROOM_LEFT",
-                            message: `${data.userName} just left!`
-                        }
+                }
+                case 'invalid-room': {
+                    setRoomStatus({
+                        status: "INVALID_ROOM",
+                        message: `Invalid call`
                     });
                     break;
+                }
+                case 'audio-level': {
+                    if (data.userId && typeof data.level === 'number') {
+                        setAudioLevels(prev => ({
+                            ...prev,
+                            [data.userId]: data.level
+                        }));
+                    }
+                    break;
+                }
             }
         } catch (error) {
             console.error("Error handling message:", error);
         }
-    }, [userDetails.userId, updateState]);
+    }, []);
 
-    // Initialize WebSocket connection - memoized
-    const initializeConnection = useCallback(() => {
-        updateState({ connectionStatus: 'connecting' });
-
-        // Create WebSocket connection
-        ws.current = new WebSocket(signalingServerUrl + `?roomId=${_roomId}&userId=${userDetails.userId}`);
-
-        ws.current.onopen = () => {
-            updateState({ connectionStatus: 'connected' });
-        };
-
-        ws.current.onclose = () => {
-            updateState({ connectionStatus: 'disconnected' });
-        };
-
-        ws.current.onerror = () => {
-            updateState({
-                connectionStatus: 'disconnected',
-                callStatus: 'failed'
-            });
-        };
-
-        ws.current.onmessage = (message) => {
-            handleWebSocketMessage(message.data);
-        };
-    }, [_roomId, userDetails.userId, handleWebSocketMessage, updateState]);
-
-    // Close all connections - memoized
-    const closeConnection = useCallback(() => {
-        // Close media tracks
-        if (localStreamRef.current) {
-            localStreamRef.current.getTracks().forEach(track => track.stop());
-            localStreamRef.current = null;
-        }
-
-        // Close WebRTC connection
-        if (peerConnection.current) {
-            peerConnection.current.close();
-            peerConnection.current = null;
-        }
-
-        // Close WebSocket
-        if (ws.current) {
-            ws.current.close();
-            ws.current = null;
-        }
-
-        updateState({
-            callStatus: 'idle',
-            connectionStatus: 'disconnected'
-        });
-    }, [updateState]);
-
-    // Set up WebRTC event handlers - memoized
+    // Setup PeerConnection event handlers
     const setupPeerConnectionEventHandlers = useCallback(() => {
         if (!peerConnection.current) return;
 
@@ -169,7 +114,7 @@ function useConnection(_roomId: string) {
             const iceState = peerConnection.current?.iceConnectionState;
 
             if (iceState === 'disconnected' || iceState === 'failed') {
-                updateState({ callStatus: 'failed' });
+                setCallStatus('failed');
             }
         };
 
@@ -192,33 +137,41 @@ function useConnection(_roomId: string) {
                 remoteAudioRef.current.srcObject = event.streams[0];
             }
         };
-    }, [updateState]);
+    }, []);
 
-    // WebSocket message sending - memoized
+    // WebSocket message sending
     const sendMessage = useCallback((data: Record<string, any>) => {
         if (ws.current?.readyState === WebSocket.OPEN) {
             ws.current.send(JSON.stringify(data));
         }
     }, []);
 
-    // Room management functions - memoized
-    const createRoom = useCallback((roomId: string) => {
-        sendMessage({ type: "create-room", room: roomId, ...userDetails });
-    }, [sendMessage, userDetails]);
+    // Initialize WebSocket connection
+    const initializeConnection = useCallback(() => {
+        setConnectionStatus('connecting');
 
-    const joinRoom = useCallback((roomId: string, userId: string) => {
-        sendMessage({ type: "join-room", room: roomId, ...userDetails });
-    }, [sendMessage, userDetails]);
+        // Create WebSocket connection
+        ws.current = new WebSocket(signalingServerUrl + `?roomId=${roomIdRef.current}&userId=${userDetailsRef.current.userId}`);
 
-    const leaveRoom = useCallback((roomId: string, userId: string) => {
-        sendMessage({ type: "leave-room", room: roomId, ...userDetails });
-    }, [sendMessage, userDetails]);
+        ws.current.onopen = () => {
+            setConnectionStatus('connected');
+        };
 
-    const sendChatMessage = useCallback((roomId: string, userId: string, message: Record<string, any>) => {
-        sendMessage({ type: "message", room: roomId, userId, message });
-    }, [sendMessage]);
+        ws.current.onclose = () => {
+            setConnectionStatus('disconnected');
+        };
 
-    // Handle received offer - memoized
+        ws.current.onerror = () => {
+            setConnectionStatus('disconnected');
+            setCallStatus('failed');
+        };
+
+        ws.current.onmessage = (message) => {
+            handleWebSocketMessage(message.data);
+        };
+    }, [handleWebSocketMessage]);
+
+    // Handle received offer
     const handleOffer = useCallback(async (offer: RTCSessionDescriptionInit) => {
         try {
             // Create new RTCPeerConnection if not exists
@@ -254,11 +207,11 @@ function useConnection(_roomId: string) {
             }
         } catch (error) {
             console.error("Error handling offer:", error);
-            updateState({ callStatus: 'failed' });
+            setCallStatus('failed');
         }
-    }, [setupPeerConnectionEventHandlers, updateState]);
+    }, [setupPeerConnectionEventHandlers]);
 
-    // Handle received answer - memoized
+    // Handle received answer
     const handleAnswer = useCallback(async (answer: RTCSessionDescriptionInit) => {
         if (!peerConnection.current) {
             console.error("Peer connection is null when handling answer");
@@ -276,7 +229,7 @@ function useConnection(_roomId: string) {
         }
     }, []);
 
-    // Handle ICE candidate - memoized
+    // Handle ICE candidate
     const handleCandidate = useCallback(async (candidate: RTCIceCandidateInit) => {
         if (!peerConnection.current) {
             console.error("Peer connection is null when handling ICE candidate");
@@ -290,15 +243,61 @@ function useConnection(_roomId: string) {
         }
     }, []);
 
-    // Start audio call - memoized
+    // Close all connections
+    const closeConnection = useCallback(() => {
+        // Close media tracks
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach(track => track.stop());
+            localStreamRef.current = null;
+        }
+
+        // Close WebRTC connection
+        if (peerConnection.current) {
+            peerConnection.current.close();
+            peerConnection.current = null;
+        }
+
+        // Close WebSocket
+        if (ws.current) {
+            ws.current.close();
+            ws.current = null;
+        }
+
+        setCallStatus('idle');
+        setConnectionStatus('disconnected');
+    }, []);
+
+    // Room management functions
+    const createRoom = useCallback((roomId: string) => {
+        sendMessage({ type: "create-room", room: roomId, ...userDetailsRef.current });
+    }, [sendMessage]);
+
+    const joinRoom = useCallback((roomId: string) => {
+        sendMessage({ type: "join-room", room: roomId, ...userDetailsRef.current });
+    }, [sendMessage]);
+
+    const leaveRoom = useCallback((roomId: string) => {
+        console.log("left : ", userDetailsRef.current);
+        sendMessage({ type: "leave-room", room: roomId, ...userDetailsRef.current });
+    }, [sendMessage]);
+
+    const sendAudioLevel = useCallback((level: number) => {
+        console.log("left : ", userDetailsRef.current);
+        sendMessage({ type: "audio-level", room: _roomId, level, ...userDetailsRef.current, });
+    }, [sendMessage]);
+
+    const sendChatMessage = useCallback((roomId: string, userId: string, message: Record<string, any>) => {
+        sendMessage({ type: "message", room: roomId, userId, message });
+    }, [sendMessage]);
+
+    // Start audio call
     const startAudioCall = useCallback(async () => {
-        if (state.connectionStatus !== 'connected') {
+        if (connectionStatus !== 'connected') {
             console.warn("Not connected to signaling server");
             return;
         }
 
-        // Batch state updates
-        updateState({ callStatus: 'calling' });
+        setCallStatus('calling');
 
         try {
             // Create new RTCPeerConnection
@@ -330,32 +329,38 @@ function useConnection(_roomId: string) {
                 ws.current.send(JSON.stringify({ type: "offer", offer }));
             } else {
                 console.error("WebSocket not connected");
-                updateState({ callStatus: 'failed' });
+                setCallStatus('failed');
             }
         } catch (err) {
             console.error("Error starting audio call:", err);
-            updateState({ callStatus: 'failed' });
+            setCallStatus('failed');
         }
-    }, [state.connectionStatus, setupPeerConnectionEventHandlers, updateState]);
+    }, [connectionStatus, setupPeerConnectionEventHandlers]);
 
-    // Toggle mute - memoized
+    // Toggle mute
     const toggleMute = useCallback(() => {
         if (localStreamRef.current) {
             const audioTracks = localStreamRef.current.getAudioTracks();
 
             audioTracks.forEach(track => {
-                track.enabled = state.isMuted;
+                track.enabled = isMuted;
             });
 
-            updateState({ isMuted: !state.isMuted });
+            setIsMuted(!isMuted);
         }
-    }, [state.isMuted, updateState]);
+    }, [isMuted]);
 
-    // End call - memoized
+    // End call
     const endCall = useCallback(() => {
+        leaveRoom(roomIdRef.current);
         closeConnection();
         initializeConnection();
-    }, [closeConnection, initializeConnection]);
+    }, [closeConnection, initializeConnection, leaveRoom]);
+
+    // Update user details function
+    const updateUserDetails = useCallback((details: Partial<typeof userDetailsRef.current>) => {
+        userDetailsRef.current = { ...userDetailsRef.current, ...details };
+    }, []);
 
     // Initialize connection on mount
     useEffect(() => {
@@ -365,30 +370,44 @@ function useConnection(_roomId: string) {
         };
     }, [initializeConnection, closeConnection]);
 
-    // Create a stable reference to the state values we want to expose
-    const stateValues = useMemo(() => ({
-        userDetails,
-        roomStatus: state.roomStatus,
-        roomId: state.roomId,
-        connectionStatus: state.connectionStatus,
-        callStatus: state.callStatus,
-        isMuted: state.isMuted,
-        localAudioRef,
-        localStreamRef,
-        remoteAudioRef,
-        users: state.users
-    }), [
-        userDetails,
-        state.roomStatus,
-        state.roomId,
-        state.connectionStatus,
-        state.callStatus,
-        state.isMuted,
-        state.users
-    ]);
+    // Return values and functions as a stable reference
+    return useMemo(() => {
+        const stateValues = {
+            userDetails: userDetailsRef.current,
+            roomStatus,
+            roomId: roomIdRef.current,
+            connectionStatus,
+            callStatus,
+            isMuted,
+            localAudioRef,
+            localStreamRef,
+            remoteAudioRef,
+            users,
+            audioLevels
+        };
 
-    // Create a stable reference to the actions we want to expose
-    const actions = useMemo(() => ({
+        const actions = {
+            initializeConnection,
+            closeConnection,
+            toggleMute,
+            endCall,
+            handleAnswer,
+            startAudioCall,
+            createRoom,
+            joinRoom,
+            leaveRoom,
+            setUserDetails: updateUserDetails,
+            sendAudioLevel
+        };
+
+        return [stateValues, actions] as const;
+    }, [
+        connectionStatus,
+        callStatus,
+        isMuted,
+        roomStatus,
+        users,
+        audioLevels,
         initializeConnection,
         closeConnection,
         toggleMute,
@@ -398,20 +417,9 @@ function useConnection(_roomId: string) {
         createRoom,
         joinRoom,
         leaveRoom,
-        setUserDetails
-    }), [
-        initializeConnection,
-        closeConnection,
-        toggleMute,
-        endCall,
-        handleAnswer,
-        startAudioCall,
-        createRoom,
-        joinRoom,
-        leaveRoom
+        updateUserDetails,
+        sendAudioLevel
     ]);
-
-    return [stateValues, actions] as const;
 }
 
 export default useConnection;

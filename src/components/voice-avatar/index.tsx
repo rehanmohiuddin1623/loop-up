@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { getAvatarInitial } from '../../utils';
+import React from 'react';
 
-const VoiceSpeakingAvatar = ({ voiceLevel, userName }: { voiceLevel: number; userName: string }) => {
+const VoiceSpeakingAvatar = ({ voiceLevel, userName = 'You' }: { voiceLevel: number; userName: string }) => {
 
 
     // Calculate ripple size based on voice level
@@ -40,7 +39,7 @@ const VoiceSpeakingAvatar = ({ voiceLevel, userName }: { voiceLevel: number; use
             {/* Avatar */}
             <div className="relative z-10 flex items-center justify-center w-20 h-20 rounded-full bg-green-100 overflow-hidden">
                 <div className="text-green-500 text-xl font-semibold">
-                    {"You"}
+                    {userName}
                 </div>
             </div>
 

@@ -22,7 +22,7 @@ export default function App() {
   const roomIdFromParam = searchParams.get("roomId")
   const _roomId = roomIdFromParam || useMemo(() => generateRoomId(), [])
 
-  const [{ users, roomStatus, roomId, localAudioRef, localStreamRef, remoteAudioRef, callStatus, connectionStatus, isMuted, userDetails }, { endCall, startAudioCall, toggleMute, initializeConnection, joinRoom, setUserDetails, createRoom, }] = useConnection(_roomId)
+  const [{ audioLevels, users, roomStatus, roomId, localAudioRef, localStreamRef, remoteAudioRef, callStatus, connectionStatus, isMuted, userDetails }, { endCall, startAudioCall, toggleMute, initializeConnection, joinRoom, setUserDetails, createRoom, sendAudioLevel }] = useConnection(_roomId)
 
   const { addToast } = useToast()
 
@@ -41,7 +41,7 @@ export default function App() {
   const initiateCallAction = () => {
     setLoading(true)
     if (roomIdFromParam) {
-      joinRoom(roomIdFromParam, "")
+      joinRoom(roomIdFromParam)
       return
     }
     createRoom(roomId as string,)
@@ -78,7 +78,9 @@ export default function App() {
 
         // Calculate average volume level
         const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
-        setAudioLevel(Math.min(100, average * 1.5)); // Scale to 0-100
+        const finalVal = Math.min(100, average * 1.5)
+        setAudioLevel(finalVal); // Scale to 0-100
+        sendAudioLevel(finalVal)
       }
 
       animationFrame = requestAnimationFrame(updateAudioLevel);
@@ -115,12 +117,12 @@ export default function App() {
 
   return (
     <div className="flex flex-col items-center min-h-screen md:w-full bg-blue-100 h-full justify-start">
-      <UserProfileCard copyInfo={handleShare} voiceLevel={audioLevel} name={userDetails.userName || ""} isOnline reconnect={initializeConnection} connectionStatus={connectionStatus} handleDetailSubmit={(userName) => setUserDetails({ ...userDetails, userName })} />
+      <UserProfileCard copyInfo={handleShare} voiceLevel={audioLevel} name={userDetails.userName || ""} isOnline reconnect={initializeConnection} connectionStatus={connectionStatus} handleDetailSubmit={(userName) => setUserDetails({ ...userDetails, userName: userName })} />
 
 
       {callStatus === "connected" ?
         <MeetView
-          {...{ localAudioRef, remoteAudioRef, callStatus, userDetails, users, closeAudioContext, isMuted, setLoading, startAudioCall, toggleMute, endCall }}
+          {...{ audioLevels, localAudioRef, remoteAudioRef, callStatus, userDetails, users, closeAudioContext, isMuted, setLoading, startAudioCall, toggleMute, endCall }}
         /> :
         <Flex className="w-full p-2" direction={"row"} justify={"center"}  >
           <VoiceCallButton loading={loading} callStatus={callStatus} onClick={initiateCallAction} roomId={roomId} />

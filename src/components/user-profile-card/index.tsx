@@ -74,18 +74,9 @@ const UserProfileCard: React.FC<UserProfileCardProps> = ({
                     </div>
                 </div>
                 <div className='flex flex-col items-center'>
-                    <VoiceSpeakingAvatar userName={name} voiceLevel={voiceLevel} />
-                    {/* <Avatar.Root className="flex relative inline-flex h-16 w-16 rounded-full bg-blue-100 text-center items-center">
-                        <Avatar.Fallback className="flex items-center justify-center h-full w-full text-center object-cover rounded-full text-blue-500 text-xl font-semibold">
-                            {getAvatarInitial(name)}
-                        </Avatar.Fallback>
-                        {connectionStatus === "connected" && (
-                            <div className="absolute bottom-0 right-0 h-4 w-4 rounded-full bg-green-500 border-2 border-white"></div>
-                        )}
-                    </Avatar.Root> */}
+                    <VoiceSpeakingAvatar userName={"You"} voiceLevel={voiceLevel} />
                 </div>
             </div>
-            {/* <Share2 onClick={copyInfo} fill='bg-black' size={20} className='absolute top-2 right-1.5 z-1 cursor-pointer' /> */}
             <InputFromModal open={showInputModal} onSubmit={(...args) => {
                 handleDetailSubmit(...args)
                 setInputModal(false)

@@ -2,7 +2,8 @@ import { Button, Flex } from '@radix-ui/themes';
 import { ForwardedRef, forwardRef } from 'react'
 import MemberAvatar from '../components/member-avatar';
 import { CALL_STATUS, UserDetail } from '../@types';
-import { Mic, MicOff } from 'lucide-react';
+import { Mic, MicOff, PhoneOff } from 'lucide-react';
+import VoiceSpeakingAvatar from '../components/voice-avatar';
 
 interface MeetViewProps {
     callStatus: CALL_STATUS; users: UserDetail[];
@@ -13,11 +14,12 @@ interface MeetViewProps {
     startAudioCall: () => void;
     localAudioRef: ForwardedRef<HTMLAudioElement>;
     remoteAudioRef: ForwardedRef<HTMLAudioElement>;
+    audioLevels: Record<string, number>
 }
 
-const MeetView = forwardRef<HTMLAudioElement, MeetViewProps>(({ callStatus, users, userDetails, toggleMute, isMuted, endCall, closeAudioContext, setLoading, startAudioCall, localAudioRef, remoteAudioRef }: MeetViewProps) => {
+const MeetView = forwardRef<HTMLAudioElement, MeetViewProps>(({ audioLevels, callStatus, users, userDetails, toggleMute, isMuted, endCall, closeAudioContext, setLoading, startAudioCall, localAudioRef, remoteAudioRef }: MeetViewProps) => {
     return (
-        <Flex direction={"column"} gap={"3"} style={{ padding: 12 }} className="w-full max-w-md bg-white rounded-lg shadow-md p-4">
+        <Flex direction={"column"} gap={"3"} style={{ padding: 40 }} className="w-full max-w-md bg-white rounded-lg shadow-md p-4">
             <div className="flex flex-col items-center gap-4">
                 {/* User avatars */}
                 <div className="flex justify-center gap-8 mb-4">
@@ -25,7 +27,7 @@ const MeetView = forwardRef<HTMLAudioElement, MeetViewProps>(({ callStatus, user
                     {callStatus === 'connected' && (
                         <div className="flex gap-2 items-center">
                             {users.map(user => user.userId !== userDetails.userId ? (
-                                <MemberAvatar userName={user.userName || ""} />
+                                user.userId ? <VoiceSpeakingAvatar voiceLevel={audioLevels[user.userId]} userName={user.userName || ""} /> : <></>
                             ) : <></>)}
                         </div>
                     )}
