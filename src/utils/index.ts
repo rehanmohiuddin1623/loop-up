@@ -47,3 +47,13 @@ export function getAvatarInitial(name: string | null) {
 export const getOrCreatePeerId = () => {
     return crypto.randomUUID();
 }
+
+export const getAPIURL = (path: string, queryParams?: Record<string, string>) => {
+    const API_URL = new URL(`/loopup${path}`, `${import.meta.env.VITE_BACKEND_URL}`);
+    if (queryParams) {
+        Object.entries(queryParams).forEach(([key, value]) => {
+            API_URL.searchParams.append(key, String(value));
+        });
+    }
+    return API_URL
+};

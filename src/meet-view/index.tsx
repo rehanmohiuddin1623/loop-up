@@ -1,6 +1,5 @@
 import { Button, Flex } from '@radix-ui/themes';
 import { ForwardedRef, forwardRef } from 'react'
-import MemberAvatar from '../components/member-avatar';
 import { CALL_STATUS, UserDetail } from '../@types';
 import { Mic, MicOff, PhoneOff } from 'lucide-react';
 import VoiceSpeakingAvatar from '../components/voice-avatar';
@@ -18,6 +17,7 @@ interface MeetViewProps {
 }
 
 const MeetView = forwardRef<HTMLAudioElement, MeetViewProps>(({ audioLevels, callStatus, users, userDetails, toggleMute, isMuted, endCall, closeAudioContext, setLoading, startAudioCall, localAudioRef, remoteAudioRef }: MeetViewProps) => {
+
     return (
         <Flex direction={"column"} gap={"3"} style={{ padding: 40 }} className="w-full max-w-md bg-white rounded-lg shadow-md p-4">
             <div className="flex flex-col items-center gap-4">

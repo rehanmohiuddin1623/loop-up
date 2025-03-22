@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import InputFromModal from '../input-from-modal';
 import { useNavigate } from 'react-router';
 import VoiceSpeakingAvatar from '../voice-avatar';
@@ -26,6 +26,7 @@ const UserProfileCard: React.FC<UserProfileCardProps> = ({
 }) => {
     const [showInputModal, setInputModal] = useState(false)
     const navigate = useNavigate()
+    const nameRef = useRef<HTMLHeadingElement>(null)
 
     useEffect(() => {
         if (!name || !name.length) {
@@ -39,19 +40,10 @@ const UserProfileCard: React.FC<UserProfileCardProps> = ({
 
     return (
         <div className="relative w-full md:max-w-screen max-w-md  bg-blue-100 rounded-lg p-0 my-0">
-            <Flex justify={"between"} height={"20"} direction={"row"} className='text-white bg-blue-600 items-center text-center p-4 justify-between w-full h-16'>
-                <div className='font-bold text-xl' >LoopUp</div>
-                <button
-                        onClick={copyInfo}
-                        className="flex items-center justify-between p-2 text-sm gap-2 cursor-pointer h-8 rounded-md font-semibold uppercase antialiased proportional-nums tracking-wide">
-                        Invite Others
-                        <Share size={16} />
-                    </button>
-            </Flex>
             <div className="flex items-center justify-between mt-4 p-4 md:p-12">
                 <div className="space-y-1">
                     <h2 className="text-4xl font-bold text-gray-900">Hey!</h2>
-                    <h1 className="text-7xl font-black text-gray-900">{name}</h1>
+                    <h1 ref={nameRef} className="text-7xl font-black text-gray-900">{name}</h1>
                     <div className="flex items-center space-x-2 text-gray-500">
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center">
@@ -79,6 +71,9 @@ const UserProfileCard: React.FC<UserProfileCardProps> = ({
             </div>
             <InputFromModal open={showInputModal} onSubmit={(...args) => {
                 handleDetailSubmit(...args)
+                if (nameRef.current) {
+                    nameRef.current.innerText = args[0]
+                }
                 setInputModal(false)
             }}
                 onCancel={() => {
