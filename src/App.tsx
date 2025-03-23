@@ -24,9 +24,10 @@ export default function App() {
   const [searchParams] = useSearchParams()
   const roomIdFromParam = searchParams.get("roomId")
   const _roomId = roomIdFromParam || useMemo(() => generateRoomId(), [])
-  const [{ audioLevels, users, roomStatus, roomId, localAudioRef, localStreamRef, remoteAudioRef, callStatus, connectionStatus, isMuted, userDetails }, { endCall, startAudioCall, toggleMute, initializeConnection, joinRoom, setUserDetails, createRoom, sendAudioLevel }] = useConnection(_roomId)
+  const [{ shareScreenRef, audioLevels, users, roomStatus, roomId, localAudioRef, localStreamRef, remoteAudioRef, callStatus, connectionStatus, isMuted, userDetails }, { endCall, startAudioCall, toggleMute, initializeConnection, joinRoom, setUserDetails, createRoom, sendAudioLevel, stopScreen, shareScreen }] = useConnection(_roomId)
   const [pageStatus, setPageStatus] = useState<"IDLE" | "INVALID_ROOM" | "FETCHING" | "READY">(!roomIdFromParam ? "READY" : "IDLE")
   const { addToast } = useToast();
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
 
   const { isPending, error, data, refetch } = useQuery({
     queryKey: [roomIdFromParam],
@@ -42,12 +43,15 @@ export default function App() {
     refetchOnMount: false,
   })
 
-  console.log({ isPending, error, data, userDetails })
+  console.log({ shareScreenRef })
 
   useEffect(() => {
     if (data === 404) {
       addToast({ title: "Invalid Room", variant: "error" });
       setPageStatus("INVALID_ROOM")
+    }
+    if (data === 204) {
+      setPageStatus("READY")
     }
   }, [data])
 
@@ -89,46 +93,64 @@ export default function App() {
   }, [roomStatus])
 
   // Audio level meter
+
   useEffect(() => {
-    if (localStreamRef.current && !audioAnalyser.current) {
-      setupAudioMeter();
+    if (localStreamRef.current !== localStream) {
+      setLocalStream(localStreamRef.current);
     }
-
+  }, [localStreamRef.current]);
+  
+  useEffect(() => {
+    if (!localStream) return;
+  
+    const audioCtx = new AudioContext();
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+  
+    const source = audioCtx.createMediaStreamSource(localStream);
+    source.connect(analyser);
+  
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
     let animationFrame: number;
-
+  
     const updateAudioLevel = () => {
-      if (audioAnalyser.current) {
-        const dataArray = new Uint8Array(audioAnalyser.current.frequencyBinCount);
-        audioAnalyser.current.getByteFrequencyData(dataArray);
-
-        // Calculate average volume level
-        const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
-        const finalVal = Math.min(100, average * 1.5)
-        setAudioLevel(finalVal); // Scale to 0-100
-        sendAudioLevel(finalVal)
-      }
-
+      analyser.getByteFrequencyData(dataArray);
+      const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
+      const finalVal = Math.min(100, average * 1.5);
+  
+      setAudioLevel((prev) => {
+        if (Math.abs(prev - finalVal) > 2) {  // ✅ Prevent excessive re-renders
+          sendAudioLevel(finalVal);
+          return finalVal;
+        }
+        return prev;
+      });
+  
       animationFrame = requestAnimationFrame(updateAudioLevel);
     };
-
+  
     updateAudioLevel();
-
+  
     return () => {
       cancelAnimationFrame(animationFrame);
+      audioCtx.close();
     };
-  }, [localStreamRef.current]);
+  }, [localStream]); // ✅ Now properly tracks stream updates
+  
+  
+  
 
   // Setup audio level meter
-  const setupAudioMeter = () => {
-    if (!localStreamRef.current) return;
+  // const setupAudioMeter = () => {
+  //   if (!localStreamRef.current) return;
 
-    audioContext.current = new AudioContext();
-    audioAnalyser.current = audioContext.current.createAnalyser();
-    audioAnalyser.current.fftSize = 256;
+  //   audioContext.current = new AudioContext();
+  //   audioAnalyser.current = audioContext.current.createAnalyser();
+  //   audioAnalyser.current.fftSize = 256;
 
-    const source = audioContext.current.createMediaStreamSource(localStreamRef.current);
-    source.connect(audioAnalyser.current);
-  };
+  //   const source = audioContext.current.createMediaStreamSource(localStreamRef.current);
+  //   source.connect(audioAnalyser.current);
+  // };
 
   const handleShare = async () => {
     const currentUrl = new URL(window.location.href);
@@ -144,6 +166,7 @@ export default function App() {
   return (
     <>
       <Layout copyInfo={handleShare} >
+        <video className="p-4" style={{ height: "100vh", width: "100vw" }} hidden ref={shareScreenRef} />
         {pageStatus === "INVALID_ROOM" ? <InvalidRoom returnToHome={() => window.location.href = "/"} /> : <></>}
 
         {pageStatus === "FETCHING" ? <div className="p-4 w-full text-center font-semibold text-xl" >Please Wait...</div> : <></>
@@ -158,6 +181,7 @@ export default function App() {
 
           {callStatus === "connected" ?
             <MeetView
+              screenShareCallback={(share) => share ? shareScreen() : stopScreen()}
               {...{ audioLevels, localAudioRef, remoteAudioRef, callStatus, userDetails, users, closeAudioContext, isMuted, setLoading, startAudioCall, toggleMute, endCall }}
             /> :
             <Flex className="w-full p-2" direction={"row"} justify={"center"}  >

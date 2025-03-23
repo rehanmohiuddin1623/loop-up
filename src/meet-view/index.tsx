@@ -1,8 +1,9 @@
 import { Button, Flex } from '@radix-ui/themes';
-import { ForwardedRef, forwardRef } from 'react'
+import { ForwardedRef, forwardRef, useState } from 'react'
 import { CALL_STATUS, UserDetail } from '../@types';
-import { Mic, MicOff, PhoneOff } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, ScreenShare } from 'lucide-react';
 import VoiceSpeakingAvatar from '../components/voice-avatar';
+import useDeviceType from '../hooks/useDeviceType';
 
 interface MeetViewProps {
     callStatus: CALL_STATUS; users: UserDetail[];
@@ -13,11 +14,13 @@ interface MeetViewProps {
     startAudioCall: () => void;
     localAudioRef: ForwardedRef<HTMLAudioElement>;
     remoteAudioRef: ForwardedRef<HTMLAudioElement>;
-    audioLevels: Record<string, number>
+    audioLevels: Record<string, number>;
+    screenShareCallback: (share: boolean) => void
 }
 
-const MeetView = forwardRef<HTMLAudioElement, MeetViewProps>(({ audioLevels, callStatus, users, userDetails, toggleMute, isMuted, endCall, closeAudioContext, setLoading, startAudioCall, localAudioRef, remoteAudioRef }: MeetViewProps) => {
-
+const MeetView = forwardRef<HTMLAudioElement, MeetViewProps>(({ screenShareCallback, audioLevels, callStatus, users, userDetails, toggleMute, isMuted, endCall, closeAudioContext, setLoading, startAudioCall, localAudioRef, remoteAudioRef }: MeetViewProps) => {
+    const [screenShare, setScreenShare] = useState(false)
+    const isMobile = useDeviceType()
     return (
         <Flex direction={"column"} gap={"3"} style={{ padding: 40 }} className="w-full max-w-md bg-white rounded-lg shadow-md p-4">
             <div className="flex flex-col items-center gap-4">
@@ -38,12 +41,24 @@ const MeetView = forwardRef<HTMLAudioElement, MeetViewProps>(({ audioLevels, cal
                     {callStatus === 'connected' ? (
                         <Flex gap={"3"} align={"center"} justify={"center"} className="justify-center w-full" >
                             <Button
-                                color='gray'
                                 onClick={toggleMute}
                                 className={`flex items-center justify-center w-12 h-12 rounded-full ${isMuted ? 'bg-red-500' : 'bg-gray-500'} text-white shadow-md hover:opacity-90`}
                             >
                                 {isMuted ? <MicOff /> : <Mic />}
                             </Button>
+
+                            {!isMobile ? <Button
+                                onClick={() => {
+                                    setScreenShare(!screenShare)
+                                    screenShareCallback(!screenShare)
+                                }}
+                                style={{ width: "10vw" }}
+                                className="flex-1 items-center justify-center w-full h-12 bg-blue-600 text-white rounded-full shadow-md hover:bg-red-600"
+                            >
+                                <span>{screenShare ? "Stop Screen" : "Share Screen"}</span>
+                                {/*@ts-ignore */}
+                                <ScreenShare />
+                            </Button> : <></>}
 
                             <Button
                                 color='red'
@@ -52,7 +67,7 @@ const MeetView = forwardRef<HTMLAudioElement, MeetViewProps>(({ audioLevels, cal
                                     closeAudioContext()
                                     setLoading(false)
                                 }}
-                                style={{ width: "20vw" }}
+                                style={{ width: isMobile ? "40vw" : "10vw" }}
                                 className="flex-1 items-center justify-center w-full h-12 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600"
                             >
                                 <span>End Call</span>
